@@ -12,19 +12,21 @@ class Preprocessing:
     def rotate_image(self, img):
         img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         edges = cv2.Canny(img_gray, 100, 200)
-        lines = cv2.HoughLinesP(edges, 1, math.pi / 180.0, 100, minLineLength=10, maxLineGap=5)
+        lines = cv2.HoughLinesP(edges, 1, math.pi / 180.0, 60, minLineLength=10, maxLineGap=5)
 
         angles = []
+        if lines is not None:
+            for x1, y1, x2, y2 in lines[0]:
+                # cv2.line(img, (x1, y1), (x2, y2), (255, 0, 0), 3)
+                angle = math.degrees(math.atan2(y2 - y1, x2 - x1))
+                angles.append(angle)
 
-        for x1, y1, x2, y2 in lines[0]:
-            # cv2.line(img, (x1, y1), (x2, y2), (255, 0, 0), 3)
-            angle = math.degrees(math.atan2(y2 - y1, x2 - x1))
-            angles.append(angle)
+            median_angle = np.median(angles)
+            img_rotated = ndimage.rotate(img, median_angle)
 
-        median_angle = np.median(angles)
-        img_rotated = ndimage.rotate(img, median_angle)
-
-        return img_rotated
+            return img_rotated
+        else:
+            return img
 
 
     def zoom_image(self, img):
@@ -44,7 +46,11 @@ class Preprocessing:
         if np.sum(img_norm[-3, :]) < np.sum(img_norm[3, :]):
             img_norm = cv2.flip(img_norm, -1)
 
-        return img_norm
+        # MOŻNA ZMNIEJSZY JAK CO
+        ret, thresh = cv2.threshold(img_norm, 127, 255, cv2.THRESH_BINARY)
+
+        normalized = thresh[np.any(thresh==False, axis=1), :]
+        return normalized
 
 
     def preprocess(self, img):

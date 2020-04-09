@@ -19,9 +19,13 @@ class Model:
 
             for k in range(desc.shape[0]):
                 diffs = np.abs(np.diff(desc[k, ::-1]))
-                euclidean_distance = np.linalg.norm(row - diffs)
-                dist.append(euclidean_distance)
+                euclidean_distance = np.abs(np.sum(row - diffs))
+                if euclidean_distance == 0:
+                    dist.append(1000)
+                else:
+                    dist.append(euclidean_distance)
 
             dist_container.append(dist)
             mins.append(dist.index(min(dist)))
         return dist_container, mins
+
