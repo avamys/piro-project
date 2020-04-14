@@ -1,0 +1,9 @@
+name: piro-project
+dependencies:
+- os
+- cv2
+- numpy
+- scipy
+- math
+- re
+- sys
