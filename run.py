@@ -2,6 +2,7 @@ import os
 import cv2
 import numpy as np
 from scipy import ndimage
+from scipy.stats import pearsonr
 import math
 import re
 import sys
@@ -14,6 +15,7 @@ class Preprocessing:
 
     def rotate_image(self, img):
         img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
         edges = cv2.Canny(img_gray, 100, 200)
         lines = cv2.HoughLinesP(edges, 1, math.pi / 180.0, 60, minLineLength=10, maxLineGap=5)
 
@@ -26,6 +28,9 @@ class Preprocessing:
 
             median_angle = np.median(angles)
             img_rotated = ndimage.rotate(img, median_angle)
+
+            if img_rotated.shape[0] > img_rotated.shape[1]:
+                img_rotated = ndimage.rotate(img_rotated, 90)
 
             return img_rotated
         else:
@@ -49,8 +54,14 @@ class Preprocessing:
 
         ret, thresh = cv2.threshold(img_norm, 127, 255, cv2.THRESH_BINARY)
 
-        normalized = thresh[np.any(thresh==False, axis=1), :]
+        normalized = thresh[np.any(thresh == False, axis=1), :]
         return normalized
+
+    def cut_sides(self, img):
+        cut = img[:450, 50:-50]
+        ret, thresh = cv2.threshold(cut, 127, 255, cv2.THRESH_BINARY)
+        norm = cv2.resize(thresh, (735, thresh.shape[0]), interpolation=cv2.INTER_LINEAR)
+        return norm
 
     def preprocess(self, img):
         img_rotated = self.rotate_image(img)
@@ -64,13 +75,14 @@ class Preprocessing:
 
         img_normalized = self.normalize_image(img_zoomed, (dim, dim), (735, 500))
 
-        return img_normalized
+        cut = self.cut_sides(img_normalized)
+        return cut
 
 
 numbers = re.compile(r'(\d+)')
 
 
-def numericalSort(value):
+def numerical_sort(value):
     parts = numbers.split(value)
     parts[1::2] = map(int, parts[1::2])
     return parts
@@ -78,14 +90,21 @@ def numericalSort(value):
 
 def load_images_from_folder(folder, amount):
     images = []
-    files = sorted(os.listdir(folder), key=numericalSort)
-    #for filename in files:
+    files = sorted(os.listdir(folder), key=numerical_sort)
     for i in range(amount):
-        print(files[i])
+        # print(files[i])
         img = cv2.imread(os.path.join(folder, files[i]))
         if img is not None:
             images.append(img)
     return images
+
+
+def load_corrects(folder):
+    correct = []
+    f = open(folder + '/correct.txt', 'r')
+    for x in f:
+        correct.append(int(x))
+    return correct
 
 
 def image_description(img, step, sensitivity):
@@ -98,7 +117,7 @@ def image_description(img, step, sensitivity):
     return descr
 
 
-def compare(descriptions, heights):
+def compare2(descriptions):
     dist_container = []
     desc = np.asarray(descriptions)
 
@@ -110,44 +129,48 @@ def compare(descriptions, heights):
 
         for k in range(desc.shape[0]):
             diffs = desc[k, ::-1]
-            euclidean_distance = np.sum(np.abs(heights[k] - row - diffs))
-            if euclidean_distance == 0:
-                dist.append(1000)
+            corr = pearsonr(row, diffs)
+            if i == k:
+                dist.append((1000, 1000))
             else:
-                dist.append(euclidean_distance)
+                dist.append(corr)
 
         dist_container.append(dist)
         mins.append(dist.index(min(dist)))
     return dist_container, mins
 
 
+def make_ranking(dists):
+    for i, dist in enumerate(dists):
+        matching = sorted(range(len(dist)), key=lambda k: dist[k])
+        matching.remove(i)
+        print(*matching, sep=' ')
+
+
 if __name__ == "__main__":
-    images = load_images_from_folder(sys.argv[1], int(sys.argv[2]))  # daneA/setX
+    images = load_images_from_folder(sys.argv[1], int(sys.argv[2]))
     prep = Preprocessing()
     descriptions = []
-    heights = []
 
     for idx, img in enumerate(images):
         img = prep.preprocess(img)
         des = image_description(img, 5, 200)
         descriptions.append(des)
-        heights.append(img.shape[0])
-        cv2.imshow('image' + str(idx), img)
-
-    print("Heights: ")
-    print(heights)
+        # cv2.imshow('image' + str(idx), img)
 
     desc_t = np.asarray(descriptions)
-    print("Descriptions:")
-    print(desc_t)
 
-    print("--------------------------------------------------")
-    print("Similarity:")
-    similarities, mins = compare(descriptions, heights)
-    print(similarities)
-    print("--------------------------------------------------")
+    similarities, mins = compare2(descriptions)
     print("Best matches:")
     print(mins)
 
-    k = cv2.waitKey(0)
-    cv2.destroyAllWindows()
+    corrects = load_corrects(sys.argv[1])
+    matches = [i for i, j in zip(mins, corrects) if i == j]
+    accuracy = len(matches) / len(mins)
+    print("Accuracy: ", accuracy)
+
+    print("--------------------------------------------------")
+    make_ranking(similarities)
+
+    # k = cv2.waitKey(0)
+    # cv2.destroyAllWindows()
